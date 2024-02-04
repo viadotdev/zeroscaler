@@ -1,0 +1,31 @@
+# permissions for end users to edit zeroscalers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: zeroscaler-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: zeroscaler
+    app.kubernetes.io/part-of: zeroscaler
+    app.kubernetes.io/managed-by: kustomize
+  name: zeroscaler-editor-role
+rules:
+- apiGroups:
+  - operator.zeroscaler.com
+  resources:
+  - zeroscalers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.zeroscaler.com
+  resources:
+  - zeroscalers/status
+  verbs:
+  - get

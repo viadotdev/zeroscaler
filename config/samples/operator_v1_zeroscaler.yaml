@@ -1,0 +1,23 @@
+apiVersion: operator.zeroscaler.com/v1
+kind: ZeroScaler
+metadata:
+  labels:
+    app.kubernetes.io/name: zeroscaler
+    app.kubernetes.io/instance: zeroscaler-sample
+    app.kubernetes.io/part-of: zeroscaler
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: zeroscaler
+  name: zeroscaler-sample
+spec:
+  hosts:
+    - go.skylab.sh
+  target:
+    kind: Deployment
+    name: test-go
+    apiVersion: apps/v1
+    service: test-go
+    port: 8080
+  scaleDownAfter: 1m
+  minReplicas: 0
+  maxReplicas: 100
+

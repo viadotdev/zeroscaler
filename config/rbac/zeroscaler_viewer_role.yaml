@@ -1,0 +1,27 @@
+# permissions for end users to view zeroscalers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: zeroscaler-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: zeroscaler
+    app.kubernetes.io/part-of: zeroscaler
+    app.kubernetes.io/managed-by: kustomize
+  name: zeroscaler-viewer-role
+rules:
+- apiGroups:
+  - operator.zeroscaler.com
+  resources:
+  - zeroscalers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.zeroscaler.com
+  resources:
+  - zeroscalers/status
+  verbs:
+  - get
