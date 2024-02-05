@@ -27,15 +27,18 @@ func NewProxy(ctx context.Context, scaler *scaler.Scaler) *Proxy {
 		scaler:   scaler,
 	}
 	p.logger = log.FromContext(ctx)
-
-	retryTransport := &RetryTransport{
-		Transport: http.DefaultTransport,
-		Retries:   50,
-		Timeout:   100 * time.Millisecond,
-	}
+	/*
+		retryTransport := &RetryTransport{
+			Logger:    p.logger,
+			Transport: http.DefaultTransport,
+			Retries:   10,
+			Timeout:   2000 * time.Millisecond,
+		}
+	*/
 
 	p.proxy = &httputil.ReverseProxy{
-		Transport: retryTransport,
+		FlushInterval: -1,
+		Transport:     http.DefaultTransport,
 		Director: func(req *http.Request) {
 			host := req.Host
 			backend, ok := p.backends[host]
@@ -58,14 +61,21 @@ func NewProxy(ctx context.Context, scaler *scaler.Scaler) *Proxy {
 			// If the replica count is 0, scale the deployment up
 			if replicas == 0 {
 				p.logger.Info("Scaling up deployment", "deployment", backend.Deployment.Name)
-				if err := p.scaler.ScaleDeployment(backend.Deployment, 1); err != nil {
-					p.logger.Error(err, "Failed to scale deployment", "deployment", backend.Deployment.Name)
-					return
+				retries := 0
+				for retries < 3 {
+					if err := p.scaler.ScaleDeployment(backend.Deployment, 1); err != nil {
+						p.scaler.RefreshDeployment(context.Background(), backend.Deployment)
+						p.logger.Error(err, "Failed to scale deployment", "deployment", backend.Deployment.Name)
+						retries++
+						continue
+					}
+					p.scaler.RefreshDeployment(context.Background(), backend.Deployment)
+					break
 				}
-				p.scaler.RefreshDeployment(context.Background(), backend.Deployment)
 				p.backends[host] = backend
 				// Loop until we have a replica count of 1
 				for replicas != 1 {
+					p.logger.Info("Waiting for deployment to scale up", "deployment", backend.Deployment.Name, "replicas", replicas)
 					// Sleep for 100ms
 					time.Sleep(100 * time.Millisecond)
 					replicas, err = p.scaler.GetReplicaCount(backend.Deployment)
@@ -74,6 +84,8 @@ func NewProxy(ctx context.Context, scaler *scaler.Scaler) *Proxy {
 						return
 					}
 				}
+				// One final sleep
+				time.Sleep(100 * time.Millisecond)
 				p.backends[host] = backend
 			} else {
 				p.logger.Info("Deployment already scaled up", "deployment", backend.Deployment.Name)
@@ -88,7 +100,7 @@ func NewProxy(ctx context.Context, scaler *scaler.Scaler) *Proxy {
 
 			req.URL.Scheme = url.Scheme
 			req.URL.Host = url.Host
-			req.Host = url.Host
+			//req.Host = url.Host
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			p.logger.Error(err, "Error proxying request", "host", r.Host, "path", r.URL.Path)
@@ -149,6 +161,7 @@ func (p *Proxy) Start() error {
 }
 
 type RetryTransport struct {
+	Logger    logr.Logger
 	Transport http.RoundTripper
 	Retries   int
 	Timeout   time.Duration
@@ -158,13 +171,17 @@ func (t *RetryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error
 	for i := 0; i < t.Retries; i++ {
+		t.Logger.Info("Trying request", "attempt", i+1)
 		ctx, cancel := context.WithTimeout(req.Context(), t.Timeout)
 		defer cancel()
 
 		reqWithTimeout := req.WithContext(ctx)
 		resp, err = t.Transport.RoundTrip(reqWithTimeout)
 		if err == nil {
+			t.Logger.Info("Request succeeded", "attempt", i+1)
 			return resp, nil
+		} else {
+			t.Logger.Error(err, "Request failed", "attempt", i+1, "error", err.Error())
 		}
 	}
 	return nil, err
